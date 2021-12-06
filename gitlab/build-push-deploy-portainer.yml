@@ -1,0 +1,69 @@
+stages:
+  - build
+  - sync
+  - release
+  - deploy
+  - deploy_production
+
+docker-build:
+  # Official docker image.
+  image: docker:latest
+  stage: build
+  script:
+    - docker build -t sample/api .
+  only:
+    - staging
+    - production
+
+## this is process to sync in git repo at client
+sync-to-git-client:
+  image: ubuntu:latest
+  stage: sync
+  script:
+    #- ls -al
+    #- pwd
+    #- ls /
+    - apt-get -y update
+    - apt-get -y install git
+    - chmod +x sync-git.sh
+    ##
+    - if [ "$CI_SERVER_URL" == "https://gitlab.mastah.id" ]; then ./sync-git.sh; else echo "Not Gitlab"; fi
+  only:
+    - staging
+    - production
+
+release-image:
+  image: docker:latest
+  stage: release
+  script:
+    #test show image
+    # - docker image ls
+    - >
+      if [ "$CI_SERVER_URL" == "https://gitlab.sample.com" ]; then
+        docker login -u yogawicak -p sample registry.gitlab.com
+        docker tag sample/api registry.gitlab.com/sample/api
+        docker push registry.gitlab.com/sample/api
+      else
+        echo "Not Gitlab FK"
+      fi
+  only:
+    - staging
+    - production
+
+deploy-using-portainer-webhook:
+  stage: deploy
+  script:
+    - apk add --update curl
+    - curl -X POST -v $WEBHOOK_PORTAINER_SERVICE
+  only:
+    - staging
+
+deploy-production:
+  stage: deploy_production
+  variables:
+    WEBHOOK_PROD_SERVICE: URL
+  script:
+    - apk add --update curl
+    - if [ "$CI_SERVER_URL" == "https://gitlab.client.com" ]; then curl -X POST -v $WEBHOOK_PROD_SERVICE; else echo "Not Gitlab client"; fi
+  only:
+    - production

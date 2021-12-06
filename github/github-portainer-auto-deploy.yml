@@ -33,7 +33,7 @@ jobs:
           tags: ${DOCKERHUB_ACCOUNT}/${DOCKERHUB_IMAGE}:latest
 
 
-      //hit endpoint to release service
+      //hit endpoint to update service with new image
       - name: curl
         uses: wei/curl@master
         with:

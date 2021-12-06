@@ -1,0 +1,98 @@
+version: '3.7'
+services:  
+
+  ### no redirect traefik,
+  ## internet ---> domain (traefik) 443 ---> services
+  api:
+    image: index.docker.io/image
+    networks:
+      - traefik-public
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+
+        ##routers
+        - "traefik.http.routers.-api-secure.entrypoints=websecure"
+        - "traefik.http.routers.-api-secure.rule=Host(`${DOMAIN}`)"
+        - "traefik.http.routers.-api-secure.service=-api-secure-svc"
+        - "traefik.http.routers.-api-secure.tls.certresolver=myresolver"
+
+        ##services
+        - "traefik.http.services.-api-secure-svc.loadbalancer.server.port=3000"
+
+
+  ### with redirect traefik
+  ### internet --> if access http
+  ##                     |
+  ### internet ---> https domain --> service in back
+   web:
+    image: docker.io/web
+    restart: always
+    networks:
+      - traefik-public
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+
+        ## set middleware to setup redirect scheme
+        - "traefik.http.middlewares.${app_traefik_secure}-redirect-web-secure.redirectscheme.scheme=https"
+
+        ## using middleware which has been made
+        - "traefik.http.routers.${app_traefik}.middlewares=${app_traefik_secure}-redirect-web-secure"
+
+        ## http routers
+        - "traefik.http.routers.${app_traefik}.entrypoints=web"
+        - "traefik.http.routers.${app_traefik}.rule=Host(`${domain}`)"
+
+
+        ## https routers
+        - "traefik.http.routers.${app_traefik_secure}.entrypoints=websecure"
+        - "traefik.http.routers.${app_traefik_secure}.rule=Host(`${domain}`)"
+        - "traefik.http.routers.${app_traefik_secure}.service=${app_traefik}-svc"
+        - "traefik.http.routers.${app_traefik_secure}.tls.certresolver=myresolver"
+        
+        ## service to back
+        - "traefik.http.services.${app_traefik}-svc.loadbalancer.server.port=80"
+
+
+    ## with path prefix, one domain
+
+    api_user_svc:
+      image: registry.gitlab.com/image_user
+      restart: always
+      networks:
+        - traefik-public
+      deploy:
+        labels:
+          - "traefik.enable=true"
+          - "traefik.docker.network=traefik-public"
+
+          ## middleware to remove /api/user in incoming to / and send to backend
+          - "traefik.http.middlewares.remove-path-api-user.replacepathregex.regex=^/api/user/(.*)"
+          - "traefik.http.middlewares.remove-path-api-user.replacepathregex.replacement=/$$1"
+
+          ## https routers
+          - "traefik.http.routers.user-svc-secure.entrypoints=websecure"
+
+          ## match with domain api.sample.com with path /api/user
+          - "traefik.http.routers.user-svc-secure.rule=Host(`api.sample.com`) && PathPrefix(`/api/user`)"
+
+          ## implement middleware to routers
+          - "traefik.http.routers.user-svc-secure.middlewares=remove-path-api-user"
+
+          ## embed router to service
+          - "traefik.http.routers.user-svc-secure.service=user-svc-secure-svc"
+
+          ## resolvers https
+          - "traefik.http.routers.user-svc-secure.tls.certresolver=myresolver"
+
+          ## service with backend port 8080
+          - "traefik.http.services.user-svc-secure-svc.loadbalancer.server.port=8080"
+
+networks:
+  ## bind traefik public 
+  traefik-public:
+    external: true
+  

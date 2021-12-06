@@ -1,0 +1,132 @@
+# Use root/example as user/password credentials
+version: "3.1"
+
+services:
+  db:
+    image: mysql:8
+    command:
+      [
+        "mysqld",
+        "--default-authentication-plugin=mysql_native_password",
+        "--default-time-zone=+07:00",
+      ]
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+      - MYSQL_DATABASE=admin
+      - MYSQL_USER=admin
+      - MYSQL_PASSWORD=admin
+      - TZ=Asia/Jakarta
+    ports:
+      - 3306:3306
+    volumes:
+      - /root/data_mysql/data_mysql:/var/lib/mysql
+    cap_add:
+      - SYS_NICE # CAP_SYS_NICE
+
+  phpmyadmin:
+    depends_on:
+      - db
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: always
+    ports:
+      - "81:80"
+    environment:
+      PMA_HOST: db
+
+  maria_db:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_DATABASE: "a"
+      MYSQL_USER: "a"
+      MYSQL_PASSWORD: "a##"
+      MYSQL_ROOT_PASSWORD: "a##!!!"
+      MYSQL_ROOT_HOST: "%"
+    ports:
+      - 3307:3306
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  mongo:
+    image: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+    volumes:
+      - mongo-db-data:/data/db
+    networks:
+      - database-net
+    ports:
+      - 27017:27017
+
+  mongo-admin:
+    image: mrvautin/adminmongo
+    environment:
+      - HOST=0.0.0.0
+      - PORT=1234
+      - PASSWORD=admin
+    #ports:
+    # - 1234:1234
+    networks:
+      - traefik-public
+      - database-net
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+        #- "traefik.http.middlewares.auth-mongo-admin.basicauth.users=mongo:$$apr1$$zqcj7myr$$HcSaev3uBrguiio8Dblv7."
+        #- "traefik.http.routers.${app_traefik_secure}.middlewares=auth-mongo-admin"
+        - "traefik.http.routers.${app_traefik_secure}.entrypoints=websecure"
+        - "traefik.http.routers.${app_traefik_secure}.rule=Host(`${domain}`)"
+        - "traefik.http.routers.${app_traefik_secure}.service=${app_traefik_secure}-svc"
+        - "traefik.http.routers.${app_traefik_secure}.tls.certresolver=myresolver"
+        - "traefik.http.services.${app_traefik_secure}-svc.loadbalancer.server.port=1234"
+
+  postgres:
+    image: postgres
+    restart: always
+    volumes:
+      - pg-datavolume:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    networks:
+      - traefik-public
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+        - "traefik.tcp.routers.postgres.entrypoints=postgresql"
+        - "traefik.tcp.routers.postgres.rule=HostSNI(`*`)"
+        - "traefik.tcp.routers.postgres.service=postgres-svc"
+        - "traefik.tcp.services.postgres-svc.loadbalancer.server.port=5432"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    depends_on:
+      - postgres
+    ports:
+      - "99:80"
+      - "53603:53603"
+    restart: always
+    networks:
+      - traefik-public
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+
+networks:
+  database-net:
+    external: true
+  traefik-public:
+    external: true
+
+volumes:
+  mongo-db-data:
+    external: true
+  pg-datavolume:
+    external: true
+  mariadb_data:
+    # external: true
